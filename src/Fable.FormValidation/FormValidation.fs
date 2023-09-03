@@ -16,24 +16,18 @@ and Rule =
     | MaxLen of int
     | MinLen of int
     | Regex of pattern: string * description: string
-    | CustomRule of Result<unit, string>
+    | CustomRule of (string -> Result<unit, string>)
 
 module RuleFn =
     /// Requires that a given string is not null or white space.
     let required (value: string) =
-        if System.String.IsNullOrWhiteSpace(value) then Error "{0} is required" else Ok()
-    
-    /// Requires that an obj is not null.
-    let requiredObj (value: obj) =
-        match value |> Option.ofObj with
-        | Some _ -> Ok()
-        | None -> Error "{0} is required"
+        if System.String.IsNullOrWhiteSpace(value) then Error "Поле обязательно для заполнения" else Ok()
     
     /// Requires that a string is not shorter than the given min length.
-    let minLen (min: int) (value: string) = if (string value).Length < min then Error (sprintf "{0} must be at least %i characters" min) else Ok()
+    let minLen (min: int) (value: string) = if (string value).Length < min then Error (sprintf "Поле должно содержать, как минимум %i символов" min) else Ok()
     
     /// Requires that a string is not longer than the given max length.
-    let maxLen (max: int) (value: string) = if (string value).Length > max then Error (sprintf "{0} exceeds the max length of %i" max) else Ok()
+    let maxLen (max: int) (value: string) = if (string value).Length > max then Error (sprintf "Поле превышает длину %i символов" max) else Ok()
 
     /// Value must be Greater Than n.
     let gt n value = if value > n then Ok() else Error (sprintf "{0} must be greater than %A" n)
@@ -49,7 +43,7 @@ module RuleFn =
 
     let regex (pattern: string) (description: string) (value: string) = 
         let m = System.Text.RegularExpressions.Regex.Match(value, pattern)
-        if m.Success then Ok() else Error (sprintf "{0} is not a valid %s" description)
+        if m.Success then Ok() else Error description
 
 /// Validates registered fields, applies or removes markup, and returns a list of error messages.
 let private validateAndReturnErrors extract enchance (registeredInputs: RegisteredInputValidators) =
@@ -62,7 +56,7 @@ let private validateAndReturnErrors extract enchance (registeredInputs: Register
                 | MaxLen max -> extract el |> RuleFn.maxLen max
                 | MinLen min -> extract el |> RuleFn.minLen min
                 | Regex (pattern, desc) -> extract el |> RuleFn.regex pattern desc
-                | CustomRule result -> result
+                | CustomRule fn -> extract el |> fn
             )
             |> List.choose (function | Error err -> Some err | _ -> None)
             |> List.map (fun err -> System.String.Format(err, fieldName))
